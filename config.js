@@ -2,7 +2,7 @@
 
 const CONFIG = {
     // API Configuration
-    API_BASE_URL: window.location.hostname === 'shared-notes-web.s3-website.eu-central-1.amazonaws.com' 
+    API_BASE_URL: window.location.hostname === 'd3e671tppt51wm.cloudfront.net' 
         ? 'https://d2w8ulo83u5tax.cloudfront.net/api/v1'
         : 'http://localhost:8000/api/v1',
     

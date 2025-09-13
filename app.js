@@ -82,6 +82,7 @@ class SharedNotesApp {
 
     async handleRegister() {
         const username = document.getElementById('registerUsername').value;
+        const email = document.getElementById('registerEmail').value;
         const password = document.getElementById('registerPassword').value;
 
         try {
@@ -92,6 +93,7 @@ class SharedNotesApp {
                 },
                 body: JSON.stringify({
                     username: username,
+                    email: email,
                     password: password
                 })
             });
@@ -637,6 +639,10 @@ class SharedNotesApp {
                         <tr>
                             <td><strong>Nome Utente:</strong></td>
                             <td>${this.escapeHtml(this.currentUser.username)}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Email:</strong></td>
+                            <td>${this.escapeHtml(this.currentUser.email)}</td>
                         </tr>
                         <tr>
                             <td><strong>Stato:</strong></td>
