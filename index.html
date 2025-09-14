@@ -78,7 +78,7 @@
                             <form id="loginForm">
                                 <div class="mb-3">
                                     <label for="loginUsername" class="form-label">Nome Utente</label>
-                                    <input type="text" class="form-control" id="loginUsername" required>
+                                    <input type="text" class="form-control" id="loginUsername" required autocomplete="off">
                                 </div>
                                 <div class="mb-3">
                                     <label for="loginPassword" class="form-label">Password</label>
@@ -111,7 +111,7 @@
                             <form id="registerForm">
                                 <div class="mb-3">
                                     <label for="registerUsername" class="form-label">Nome Utente</label>
-                                    <input type="text" class="form-control" id="registerUsername" required>
+                                    <input type="text" class="form-control" id="registerUsername" required autocomplete="off">
                                 </div>
                                 <div class="mb-3">
                                     <label for="registerPassword" class="form-label">Password</label>
@@ -151,10 +151,10 @@
                             </label>
                             <div class="search-input-group">
                                 <input type="text" class="form-control" id="searchInput" 
-                                       placeholder="Cerca nel titolo o contenuto...">
+                                       placeholder="Cerca nel titolo o contenuto..." autocomplete="off">
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label for="tagFilter" class="form-label">
                                 <i class="bi bi-tags"></i> Filtra per tag
                             </label>
@@ -164,9 +164,11 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-2 d-flex align-items-end">
-                            <button class="btn btn-outline-secondary clear-filters-btn w-100" onclick="app.clearFilters()">
-                                <i class="bi bi-x-circle"></i> Pulisci
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <button class="btn clear-filters-btn" onclick="app.clearFilters()">
+                                <i class="bi bi-x-circle"></i> Pulisci Filtri
                             </button>
                         </div>
                     </div>
@@ -194,10 +196,10 @@
                             </label>
                             <div class="search-input-group">
                                 <input type="text" class="form-control" id="publicSearchInput" 
-                                       placeholder="Cerca nel titolo o contenuto...">
+                                       placeholder="Cerca nel titolo o contenuto..." autocomplete="off">
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label for="publicTagFilter" class="form-label">
                                 <i class="bi bi-tags"></i> Filtra per tag
                             </label>
@@ -207,9 +209,11 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-2 d-flex align-items-end">
-                            <button class="btn btn-outline-secondary clear-filters-btn w-100" onclick="app.clearPublicFilters()">
-                                <i class="bi bi-x-circle"></i> Pulisci
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <button class="btn clear-filters-btn" onclick="app.clearPublicFilters()">
+                                <i class="bi bi-x-circle"></i> Pulisci Filtri
                             </button>
                         </div>
                     </div>

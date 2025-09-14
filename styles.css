@@ -365,9 +365,14 @@ body {
 
 .clear-filters-btn {
     border-radius: 0.5rem;
-    border: 2px solid #e9ecef;
+    border: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+    color: #495057;
     transition: all 0.3s ease;
-    font-weight: 500;
+    font-weight: 600;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.95rem;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
 }
 
 .clear-filters-btn:hover {
@@ -375,6 +380,17 @@ body {
     background-color: var(--secondary-color);
     color: white;
     transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.clear-filters-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.clear-filters-btn:focus {
+    box-shadow: 0 0 0 0.2rem rgba(108, 117, 125, 0.25);
+    outline: none;
 }
 
 /* Filter indicators */
