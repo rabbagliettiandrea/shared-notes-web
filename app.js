@@ -7,6 +7,10 @@ class SharedNotesApp {
         this.refreshToken = localStorage.getItem(CONFIG.REFRESH_TOKEN_STORAGE_KEY);
         this.currentNoteId = null;
         this.publicNotes = []; // Store loaded public notes
+        this.availableTags = []; // Store available tags
+        this.searchTimeouts = {}; // For debouncing different types of search
+        this.isInitialLoad = true; // Flag to prevent search during initial load
+        this.isLoading = {}; // Track loading states to prevent multiple simultaneous requests
         
         this.init();
     }
@@ -41,6 +45,64 @@ class SharedNotesApp {
             e.preventDefault();
             this.shareNote();
         });
+
+        // Search and filter event listeners
+        this.setupSearchAndFilterListeners();
+    }
+
+    setupSearchAndFilterListeners() {
+        // Search input for my notes
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.debounceSearch('myNotes', () => this.loadNotes(), 500);
+            });
+        }
+
+        // Tag filter for my notes
+        const tagFilter = document.getElementById('tagFilter');
+        if (tagFilter) {
+            tagFilter.addEventListener('change', () => {
+                this.debounceSearch('myNotes', () => this.loadNotes(), 100);
+            });
+        }
+
+        // Search input for public notes
+        const publicSearchInput = document.getElementById('publicSearchInput');
+        if (publicSearchInput) {
+            publicSearchInput.addEventListener('input', (e) => {
+                this.debounceSearch('publicNotes', () => this.loadPublicNotes(), 500);
+            });
+        }
+
+        // Tag filter for public notes
+        const publicTagFilter = document.getElementById('publicTagFilter');
+        if (publicTagFilter) {
+            publicTagFilter.addEventListener('change', () => {
+                this.debounceSearch('publicNotes', () => this.loadPublicNotes(), 100);
+            });
+        }
+    }
+
+    debounceSearch(searchType, searchFunction, delay) {
+        // Don't start new search if one is already in progress
+        if (this.isLoading[searchType]) {
+            console.log(`Search for ${searchType} already in progress, skipping`);
+            return;
+        }
+
+        // Clear existing timeout for this search type
+        if (this.searchTimeouts[searchType]) {
+            clearTimeout(this.searchTimeouts[searchType]);
+        }
+        
+        // Set new timeout
+        this.searchTimeouts[searchType] = setTimeout(() => {
+            // Check again before executing
+            if (!this.isLoading[searchType]) {
+                searchFunction();
+            }
+        }, delay);
     }
 
     // Authentication Methods
@@ -138,9 +200,11 @@ class SharedNotesApp {
         if (!this.accessToken) return;
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/users/me`, {
+            const response = await fetch(`${this.apiBaseUrl}/users/me?_t=${Date.now()}`, {
                 headers: {
-                    'Authorization': `Bearer ${this.accessToken}`
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
                 }
             });
 
@@ -270,22 +334,64 @@ class SharedNotesApp {
         }
         
         this.showPage('myNotesPage');
-        await this.loadNotes();
+        this.isInitialLoad = true;
+        await Promise.all([
+            this.loadNotes(),
+            this.loadAvailableTags()
+        ]);
+        this.isInitialLoad = false;
     }
 
     async showPublicNotes() {
         this.showPage('publicNotesPage');
+        this.isInitialLoad = true;
+        // Load public notes (tags will be loaded automatically after notes are loaded)
         await this.loadPublicNotes();
+        this.isInitialLoad = false;
     }
 
     // Notes Methods
     async loadNotes() {
         if (!this.accessToken) return;
 
+        // Prevent multiple simultaneous requests
+        if (this.isLoading['myNotes']) {
+            console.log('Notes already loading, skipping request');
+            return;
+        }
+
+        this.isLoading['myNotes'] = true;
+
         try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/`, {
+            // Show loading state only if not initial load
+            if (!this.isInitialLoad) {
+                this.showLoadingState('notesList');
+            }
+
+            // Get search and filter parameters
+            const searchInput = document.getElementById('searchInput');
+            const tagFilter = document.getElementById('tagFilter');
+            
+            const search = searchInput ? searchInput.value.trim() : '';
+            const selectedTags = tagFilter ? Array.from(tagFilter.selectedOptions)
+                .map(option => option.value)
+                .filter(value => value !== '') : [];
+
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (search) params.append('search', search);
+            if (selectedTags.length > 0) params.append('tags', selectedTags.join(','));
+            // Add cache-busting parameter
+            params.append('_t', Date.now());
+
+            const url = `${this.apiBaseUrl}/notes/${params.toString() ? '?' + params.toString() : ''}`;
+            
+            console.log('Loading notes from:', url);
+            const response = await fetch(url, {
                 headers: {
-                    'Authorization': `Bearer ${this.accessToken}`
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
                 }
             });
 
@@ -298,21 +404,179 @@ class SharedNotesApp {
             }
         } catch (error) {
             this.showAlert('Errore nel caricamento delle note', 'danger');
+        } finally {
+            this.isLoading['myNotes'] = false;
         }
     }
 
     async loadPublicNotes() {
+        // Prevent multiple simultaneous requests
+        if (this.isLoading['publicNotes']) {
+            console.log('Public notes already loading, skipping request');
+            return;
+        }
+
+        this.isLoading['publicNotes'] = true;
+
         try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/public`);
+            // Show loading state only if not initial load
+            if (!this.isInitialLoad) {
+                this.showLoadingState('publicNotesList');
+            }
+
+            // Get search and filter parameters
+            const searchInput = document.getElementById('publicSearchInput');
+            const tagFilter = document.getElementById('publicTagFilter');
+            
+            const search = searchInput ? searchInput.value.trim() : '';
+            const selectedTags = tagFilter ? Array.from(tagFilter.selectedOptions)
+                .map(option => option.value)
+                .filter(value => value !== '') : [];
+
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (search) params.append('search', search);
+            if (selectedTags.length > 0) params.append('tags', selectedTags.join(','));
+            // Add cache-busting parameter
+            params.append('_t', Date.now());
+
+            const url = `${this.apiBaseUrl}/notes/public${params.toString() ? '?' + params.toString() : ''}`;
+            
+            console.log('Loading public notes from:', url);
+            const response = await fetch(url, {
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+            
+            console.log('Response status:', response.status);
 
             if (response.ok) {
                 const notes = await response.json();
+                console.log('Public notes loaded:', notes);
                 this.publicNotes = notes; // Store public notes for later use
                 this.displayNotes(notes, 'publicNotesList', true);
+                // Load tags after notes are loaded
+                this.loadPublicTags();
+            } else {
+                console.error('Response not OK:', response.status, response.statusText);
+                const errorText = await response.text();
+                console.error('Error response:', errorText);
+                this.showAlert('Errore nel caricamento delle note pubbliche', 'danger');
             }
         } catch (error) {
+            console.error('Error loading public notes:', error);
             this.showAlert('Errore nel caricamento delle note pubbliche', 'danger');
+        } finally {
+            this.isLoading['publicNotes'] = false;
         }
+    }
+
+    async loadAvailableTags() {
+        if (!this.accessToken) return;
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/notes/tags?_t=${Date.now()}`, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (response.ok) {
+                const tags = await response.json();
+                this.availableTags = tags;
+                this.populateTagFilter('tagFilter', tags);
+            } else if (response.status === 401) {
+                await this.refreshAccessToken();
+                return this.loadAvailableTags();
+            }
+        } catch (error) {
+            console.error('Error loading available tags:', error);
+        }
+    }
+
+    async loadPublicTags() {
+        try {
+            // For public notes, we'll extract tags from the loaded public notes
+            // since there's no specific endpoint for public tags
+            if (!this.publicNotes || this.publicNotes.length === 0) {
+                console.log('No public notes available to extract tags from');
+                return;
+            }
+            
+            const tags = [...new Set(this.publicNotes.flatMap(note => note.tags || []))];
+            console.log('Extracted public tags:', tags);
+            this.populateTagFilter('publicTagFilter', tags);
+        } catch (error) {
+            console.error('Error loading public tags:', error);
+        }
+    }
+
+    populateTagFilter(filterId, tags) {
+        const filter = document.getElementById(filterId);
+        if (!filter) return;
+
+        // Check if tags are already loaded (avoid unnecessary DOM updates)
+        const currentOptions = Array.from(filter.options).slice(1).map(option => option.value);
+        const newTags = tags.sort();
+        
+        if (currentOptions.length === newTags.length && 
+            currentOptions.every((tag, index) => tag === newTags[index])) {
+            console.log('Tags already loaded, skipping update');
+            return;
+        }
+
+        // Clear existing options except the first one
+        filter.innerHTML = '<option value="">Tutti i tag</option>';
+        
+        // Add tag options
+        newTags.forEach(tag => {
+            const option = document.createElement('option');
+            option.value = tag;
+            option.textContent = tag;
+            filter.appendChild(option);
+        });
+        
+        console.log(`Populated ${filterId} with ${newTags.length} tags`);
+    }
+
+    clearFilters() {
+        const searchInput = document.getElementById('searchInput');
+        const tagFilter = document.getElementById('tagFilter');
+        
+        if (searchInput) searchInput.value = '';
+        if (tagFilter) tagFilter.selectedIndex = 0;
+        
+        this.loadNotes();
+    }
+
+    clearPublicFilters() {
+        const searchInput = document.getElementById('publicSearchInput');
+        const tagFilter = document.getElementById('publicTagFilter');
+        
+        if (searchInput) searchInput.value = '';
+        if (tagFilter) tagFilter.selectedIndex = 0;
+        
+        this.loadPublicNotes();
+    }
+
+    showLoadingState(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="col-12">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Caricamento...</span>
+                    </div>
+                    <p class="mt-3 text-muted">Caricamento delle note...</p>
+                </div>
+            </div>
+        `;
     }
 
     displayNotes(notes, containerId, isPublic = false) {
@@ -342,6 +606,11 @@ class SharedNotesApp {
                         <div class="note-content">
                             ${note.content ? this.convertUrlsToLinks(note.content) : '<em>Nessun contenuto</em>'}
                         </div>
+                        ${note.tags && note.tags.length > 0 ? `
+                        <div class="note-tags mb-2">
+                            ${note.tags.map(tag => `<span class="badge bg-secondary me-1">${this.escapeHtml(tag)}</span>`).join('')}
+                        </div>
+                        ` : ''}
                         <div class="note-meta">
                             <small>
                                 <i class="bi bi-calendar"></i> ${new Date(note.created_at).toLocaleDateString()}
@@ -384,9 +653,11 @@ class SharedNotesApp {
         if (!this.accessToken) return;
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/${noteId}`, {
+            const response = await fetch(`${this.apiBaseUrl}/notes/${noteId}?_t=${Date.now()}`, {
                 headers: {
-                    'Authorization': `Bearer ${this.accessToken}`
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
                 }
             });
 
@@ -398,6 +669,7 @@ class SharedNotesApp {
                 document.getElementById('noteTitle').value = note.title;
                 document.getElementById('noteContent').value = note.content || '';
                 document.getElementById('noteIsPublic').checked = note.is_public;
+                document.getElementById('noteTags').value = note.tags ? note.tags.join(', ') : '';
                 
                 const modal = new bootstrap.Modal(document.getElementById('noteModal'));
                 modal.show();
@@ -416,11 +688,18 @@ class SharedNotesApp {
         const title = document.getElementById('noteTitle').value;
         const content = document.getElementById('noteContent').value;
         const isPublic = document.getElementById('noteIsPublic').checked;
+        const tagsInput = document.getElementById('noteTags').value;
+        
+        // Parse tags from comma-separated string
+        const tags = tagsInput
+            ? tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+            : [];
 
         const noteData = {
             title: title,
             content: content,
-            is_public: isPublic
+            is_public: isPublic,
+            tags: tags
         };
 
         try {
@@ -448,7 +727,10 @@ class SharedNotesApp {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('noteModal'));
                 modal.hide();
                 
-                await this.loadNotes();
+                await Promise.all([
+                    this.loadNotes(),
+                    this.loadAvailableTags()
+                ]);
             } else if (response.status === 401) {
                 await this.refreshAccessToken();
                 return this.saveNote();
@@ -465,16 +747,21 @@ class SharedNotesApp {
         if (!this.accessToken || !confirm('Sei sicuro di voler eliminare questa nota?')) return;
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/${noteId}`, {
+            const response = await fetch(`${this.apiBaseUrl}/notes/${noteId}?_t=${Date.now()}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${this.accessToken}`
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
                 }
             });
 
             if (response.ok) {
                 this.showAlert('Nota eliminata con successo!', 'success');
-                await this.loadNotes();
+                await Promise.all([
+                    this.loadNotes(),
+                    this.loadAvailableTags()
+                ]);
             } else if (response.status === 401) {
                 await this.refreshAccessToken();
                 return this.deleteNote(noteId);
@@ -513,8 +800,12 @@ class SharedNotesApp {
                 headers['Authorization'] = `Bearer ${this.accessToken}`;
             }
             
-            const response = await fetch(`${this.apiBaseUrl}/notes/${noteId}`, {
-                headers: headers
+            const response = await fetch(`${this.apiBaseUrl}/notes/${noteId}?_t=${Date.now()}`, {
+                headers: {
+                    ...headers,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
             });
 
             if (response.ok) {
@@ -546,6 +837,14 @@ class SharedNotesApp {
                                     ${note.updated_at ? `<br><i class="bi bi-pencil"></i> Aggiornato: ${new Date(note.updated_at).toLocaleString()}` : ''}
                                 </small>
                             </div>
+                            ${note.tags && note.tags.length > 0 ? `
+                            <div class="mb-3">
+                                <strong>Tag:</strong>
+                                <div class="mt-1">
+                                    ${note.tags.map(tag => `<span class="badge bg-secondary me-1">${this.escapeHtml(tag)}</span>`).join('')}
+                                </div>
+                            </div>
+                            ` : ''}
                             <div class="note-content-full">
                                 ${note.content ? this.convertUrlsToLinks(note.content).replace(/\n/g, '<br>') : '<em>Nessun contenuto</em>'}
                             </div>
@@ -598,10 +897,12 @@ class SharedNotesApp {
         const permission = document.getElementById('sharePermission').value;
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/${this.currentNoteId}/share?user_id=${userId}&permission=${permission}`, {
+            const response = await fetch(`${this.apiBaseUrl}/notes/${this.currentNoteId}/share?user_id=${userId}&permission=${permission}&_t=${Date.now()}`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${this.accessToken}`
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
                 }
             });
 
@@ -755,6 +1056,14 @@ function saveNote() {
 
 function shareNote() {
     app.shareNote();
+}
+
+function clearFilters() {
+    app.clearFilters();
+}
+
+function clearPublicFilters() {
+    app.clearPublicFilters();
 }
 
 // Initialize the application
