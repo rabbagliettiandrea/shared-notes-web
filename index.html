@@ -10,22 +10,14 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand navbar-dark bg-primary">
         <div class="container">
             <a class="navbar-brand" href="#" onclick="showMyNotes()">
                 <i class="bi bi-journal-text"></i> Shared Notes
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <!-- Navigation items removed - app goes directly to notes -->
-                </ul>
-                <ul class="navbar-nav" id="authNav">
-                    <!-- Auth buttons will be populated by JavaScript -->
-                </ul>
-            </div>
+            <ul class="navbar-nav" id="authNav">
+                <!-- Auth buttons will be populated by JavaScript -->
+            </ul>
         </div>
     </nav>
 
@@ -197,7 +189,7 @@
                                 <div class="form-text">I tag ti aiutano a organizzare e trovare le tue note</div>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">
+                                <label class="form-label" for="shareUsername">
                                     <i class="bi bi-share"></i> Condivisione
                                 </label>
                                 <div class="mb-2">
