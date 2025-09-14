@@ -471,3 +471,31 @@ body {
     0% { transform: translateY(-50%) rotate(0deg); }
     100% { transform: translateY(-50%) rotate(360deg); }
 }
+
+/* User Search Results */
+.user-search-result {
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-bottom: 4px;
+}
+
+.user-search-result:hover {
+    background-color: #f8f9fa;
+}
+
+.user-search-result.selected {
+    background-color: #e7f3ff;
+    border-color: #0d6efd;
+}
+
+.user-search-result.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.user-search-result.disabled:hover {
+    background-color: transparent;
+}

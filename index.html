@@ -31,6 +31,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSharedNotes()">
+                            <i class="bi bi-people"></i> Condivise con me
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showPublicNotes()">
                             <i class="bi bi-globe"></i> Note Pubbliche
                         </a>
@@ -54,7 +59,8 @@
                 <div class="col-lg-8 mx-auto text-center">
                     <h1 class="display-4 mb-4">Benvenuto in Shared Notes</h1>
                     <p class="lead mb-4">Crea, condividi e collabora sulle note con altri. Le tue idee, condivise con il mondo.</p>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <!-- Login/Register buttons (always hidden, shown only for anonymous users) -->
+                    <div id="authButtons" class="d-none gap-2 justify-content-center">
                         <button class="btn btn-primary btn-lg" onclick="showLogin()" id="loginBtn">
                             <i class="bi bi-box-arrow-in-right"></i> Accedi
                         </button>
@@ -225,6 +231,51 @@
             </div>
         </div>
 
+        <!-- Shared Notes Page -->
+        <div id="sharedNotesPage" class="page" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-people"></i> Condivise con me</h2>
+            </div>
+            
+            <!-- Search and Filter Section -->
+            <div class="card search-filter-card mb-4">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="sharedSearchInput" class="form-label">
+                                <i class="bi bi-search"></i> Cerca nelle note condivise
+                            </label>
+                            <div class="search-input-group">
+                                <input type="text" class="form-control" id="sharedSearchInput" 
+                                       placeholder="Cerca nel titolo o contenuto..." autocomplete="off">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="sharedTagFilter" class="form-label">
+                                <i class="bi bi-tags"></i> Filtra per tag
+                            </label>
+                            <div class="tag-filter-group">
+                                <select class="form-select" id="sharedTagFilter" multiple>
+                                    <option value="">Tutti i tag</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <button class="btn clear-filters-btn" onclick="app.clearSharedFilters()">
+                                <i class="bi bi-x-circle"></i> Pulisci Filtri
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="sharedNotesList" class="row">
+                <!-- Shared notes will be populated by JavaScript -->
+            </div>
+        </div>
+
         <!-- Create/Edit Note Modal -->
         <div class="modal fade" id="noteModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
@@ -277,8 +328,13 @@
                     <div class="modal-body">
                         <form id="shareForm">
                             <div class="mb-3">
-                                <label for="shareUserId" class="form-label">ID Utente</label>
-                                <input type="number" class="form-control" id="shareUserId" required>
+                                <label for="shareUsername" class="form-label">Nome Utente</label>
+                                <input type="text" class="form-control" id="shareUsername" 
+                                       placeholder="Inizia a digitare per cercare utenti..." autocomplete="off">
+                                <div id="userSearchResults" class="mt-2" style="display: none;">
+                                    <!-- User search results will be populated here -->
+                                </div>
+                                <input type="hidden" id="shareUserId" required>
                             </div>
                             <div class="mb-3">
                                 <label for="sharePermission" class="form-label">Permesso</label>
@@ -287,6 +343,11 @@
                                     <option value="write">Scrittura</option>
                                     <option value="admin">Amministratore</option>
                                 </select>
+                                <div class="form-text">
+                                    <strong>Lettura:</strong> L'utente può solo visualizzare la nota<br>
+                                    <strong>Scrittura:</strong> L'utente può modificare la nota<br>
+                                    <strong>Amministratore:</strong> L'utente può modificare e condividere la nota
+                                </div>
                             </div>
                         </form>
                     </div>

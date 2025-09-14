@@ -7,17 +7,20 @@ class SharedNotesApp {
         this.refreshToken = localStorage.getItem(CONFIG.REFRESH_TOKEN_STORAGE_KEY);
         this.currentNoteId = null;
         this.publicNotes = []; // Store loaded public notes
+        this.sharedNotes = []; // Store loaded shared notes
         this.availableTags = []; // Store available tags
         this.searchTimeouts = {}; // For debouncing different types of search
         this.isInitialLoad = true; // Flag to prevent search during initial load
         this.isLoading = {}; // Track loading states to prevent multiple simultaneous requests
         
-        this.init();
+        this.init().catch(error => {
+            console.error('Error during app initialization:', error);
+        });
     }
 
-    init() {
+    async init() {
         this.setupEventListeners();
-        this.checkAuthStatus();
+        await this.checkAuthStatus();
         this.showHome();
     }
 
@@ -45,6 +48,14 @@ class SharedNotesApp {
             e.preventDefault();
             this.shareNote();
         });
+
+        // User search functionality
+        const shareUsernameInput = document.getElementById('shareUsername');
+        if (shareUsernameInput) {
+            shareUsernameInput.addEventListener('input', (e) => {
+                this.searchUsers(e.target.value);
+            });
+        }
 
         // Search and filter event listeners
         this.setupSearchAndFilterListeners();
@@ -82,12 +93,27 @@ class SharedNotesApp {
                 this.debounceSearch('publicNotes', () => this.loadPublicNotes(), 100);
             });
         }
+
+        // Search input for shared notes
+        const sharedSearchInput = document.getElementById('sharedSearchInput');
+        if (sharedSearchInput) {
+            sharedSearchInput.addEventListener('input', (e) => {
+                this.debounceSearch('sharedNotes', () => this.loadSharedNotes(), 500);
+            });
+        }
+
+        // Tag filter for shared notes
+        const sharedTagFilter = document.getElementById('sharedTagFilter');
+        if (sharedTagFilter) {
+            sharedTagFilter.addEventListener('change', () => {
+                this.debounceSearch('sharedNotes', () => this.loadSharedNotes(), 100);
+            });
+        }
     }
 
     debounceSearch(searchType, searchFunction, delay) {
         // Don't start new search if one is already in progress
         if (this.isLoading[searchType]) {
-            console.log(`Search for ${searchType} already in progress, skipping`);
             return;
         }
 
@@ -130,9 +156,17 @@ class SharedNotesApp {
                 localStorage.setItem(CONFIG.TOKEN_STORAGE_KEY, this.accessToken);
                 localStorage.setItem(CONFIG.REFRESH_TOKEN_STORAGE_KEY, this.refreshToken);
                 
+                // Get current user and wait for it to complete
                 await this.getCurrentUser();
-                this.showAlert('Accesso effettuato con successo!', 'success');
-                this.showMyNotes();
+                
+                // Only proceed if we successfully got the user info
+                if (this.currentUser) {
+                    this.showAlert('Accesso effettuato con successo!', 'success');
+                    this.showMyNotes();
+                } else {
+                    this.showAlert('Errore nel recupero delle informazioni utente. Riprova.', 'danger');
+                    console.error('Failed to get current user after login');
+                }
             } else {
                 const error = await response.json();
                 this.showAlert(error.detail || 'Accesso fallito', 'danger');
@@ -197,14 +231,19 @@ class SharedNotesApp {
     }
 
     async getCurrentUser() {
-        if (!this.accessToken) return;
+        if (!this.accessToken) {
+            this.currentUser = null;
+            this.updateAuthUI();
+            return;
+        }
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/users/me?_t=${Date.now()}`, {
+            const response = await fetch(`${this.apiBaseUrl}/users/me`, {
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
                     'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
+                    'Pragma': 'no-cache',
+                    'X-Cache-Bust': Date.now().toString()
                 }
             });
 
@@ -212,11 +251,24 @@ class SharedNotesApp {
                 this.currentUser = await response.json();
                 this.updateAuthUI();
             } else if (response.status === 401) {
-                await this.refreshAccessToken();
-                return this.getCurrentUser();
+                const refreshed = await this.refreshAccessToken();
+                if (refreshed) {
+                    return this.getCurrentUser();
+                } else {
+                    // Refresh failed, user is not authenticated
+                    this.currentUser = null;
+                    this.updateAuthUI();
+                }
+            } else {
+                // Other error, assume not authenticated
+                this.currentUser = null;
+                this.updateAuthUI();
             }
         } catch (error) {
+            // Network or other error, assume not authenticated
             console.error('Error getting current user:', error);
+            this.currentUser = null;
+            this.updateAuthUI();
         }
     }
 
@@ -250,18 +302,15 @@ class SharedNotesApp {
         }
     }
 
-    checkAuthStatus() {
-        if (this.accessToken) {
-            this.getCurrentUser();
-        } else {
-            this.updateAuthUI();
-        }
+    async checkAuthStatus() {
+        await this.getCurrentUser();
     }
 
     updateAuthUI() {
         const authNav = document.getElementById('authNav');
         
         if (this.currentUser) {
+            // User is authenticated - show user menu in navbar
             authNav.innerHTML = `
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
@@ -278,11 +327,8 @@ class SharedNotesApp {
                     </ul>
                 </li>
             `;
-            
-            // Hide login/register buttons on home page
-            document.getElementById('loginBtn').style.display = 'none';
-            document.getElementById('registerBtn').style.display = 'none';
         } else {
+            // User is not authenticated - show login/register in navbar
             authNav.innerHTML = `
                 <li class="nav-item">
                     <a class="nav-link" href="#" onclick="app.showLogin()">
@@ -296,11 +342,12 @@ class SharedNotesApp {
                 </li>
             `;
             
-            // Show login/register buttons on home page
-            document.getElementById('loginBtn').style.display = 'inline-block';
-            document.getElementById('registerBtn').style.display = 'inline-block';
+            // Show login/register buttons for non-authenticated users
+            document.getElementById('authButtons').classList.remove('d-none');
+            document.getElementById('authButtons').classList.add('d-flex');
         }
     }
+
 
     // Navigation Methods
     showPage(pageId) {
@@ -350,13 +397,24 @@ class SharedNotesApp {
         this.isInitialLoad = false;
     }
 
+    async showSharedNotes() {
+        if (!this.currentUser) {
+            this.showLogin();
+            return;
+        }
+        
+        this.showPage('sharedNotesPage');
+        this.isInitialLoad = true;
+        await this.loadSharedNotes();
+        this.isInitialLoad = false;
+    }
+
     // Notes Methods
     async loadNotes() {
         if (!this.accessToken) return;
 
         // Prevent multiple simultaneous requests
         if (this.isLoading['myNotes']) {
-            console.log('Notes already loading, skipping request');
             return;
         }
 
@@ -386,7 +444,6 @@ class SharedNotesApp {
 
             const url = `${this.apiBaseUrl}/notes/${params.toString() ? '?' + params.toString() : ''}`;
             
-            console.log('Loading notes from:', url);
             const response = await fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
@@ -412,7 +469,6 @@ class SharedNotesApp {
     async loadPublicNotes() {
         // Prevent multiple simultaneous requests
         if (this.isLoading['publicNotes']) {
-            console.log('Public notes already loading, skipping request');
             return;
         }
 
@@ -442,7 +498,6 @@ class SharedNotesApp {
 
             const url = `${this.apiBaseUrl}/notes/public${params.toString() ? '?' + params.toString() : ''}`;
             
-            console.log('Loading public notes from:', url);
             const response = await fetch(url, {
                 headers: {
                     'Cache-Control': 'no-cache',
@@ -450,26 +505,86 @@ class SharedNotesApp {
                 }
             });
             
-            console.log('Response status:', response.status);
-
             if (response.ok) {
                 const notes = await response.json();
-                console.log('Public notes loaded:', notes);
                 this.publicNotes = notes; // Store public notes for later use
                 this.displayNotes(notes, 'publicNotesList', true);
                 // Load tags after notes are loaded
                 this.loadPublicTags();
             } else {
-                console.error('Response not OK:', response.status, response.statusText);
-                const errorText = await response.text();
-                console.error('Error response:', errorText);
                 this.showAlert('Errore nel caricamento delle note pubbliche', 'danger');
             }
         } catch (error) {
-            console.error('Error loading public notes:', error);
             this.showAlert('Errore nel caricamento delle note pubbliche', 'danger');
         } finally {
             this.isLoading['publicNotes'] = false;
+        }
+    }
+
+    async loadSharedNotes() {
+        if (!this.accessToken) return;
+
+        // Prevent multiple simultaneous requests
+        if (this.isLoading['sharedNotes']) {
+            return;
+        }
+
+        this.isLoading['sharedNotes'] = true;
+
+        try {
+            // Show loading state only if not initial load
+            if (!this.isInitialLoad) {
+                this.showLoadingState('sharedNotesList');
+            }
+
+            // Get search and filter parameters
+            const searchInput = document.getElementById('sharedSearchInput');
+            const tagFilter = document.getElementById('sharedTagFilter');
+            
+            const search = searchInput ? searchInput.value.trim() : '';
+            const selectedTags = tagFilter ? Array.from(tagFilter.selectedOptions)
+                .map(option => option.value)
+                .filter(value => value !== '') : [];
+
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (search) params.append('search', search);
+            if (selectedTags.length > 0) params.append('tags', selectedTags.join(','));
+            // Add pagination parameters
+            params.append('skip', '0');
+            params.append('limit', '100');
+            // Note: Don't add _t parameter for shared notes as it causes 422 error
+
+            const url = `${this.apiBaseUrl}/notes/shared?${params.toString()}`;
+            
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                    'X-Cache-Bust': Date.now().toString()
+                }
+            });
+
+            if (response.ok) {
+                const notes = await response.json();
+                this.sharedNotes = notes; // Store shared notes for later use
+                this.displayNotes(notes, 'sharedNotesList', false, true);
+                // Load tags after notes are loaded
+                this.loadSharedTags();
+            } else if (response.status === 401) {
+                await this.refreshAccessToken();
+                return this.loadSharedNotes();
+            } else {
+                console.error('Response not OK:', response.status, response.statusText);
+                const errorText = await response.text();
+                console.error('Error response:', errorText);
+                this.showAlert('Errore nel caricamento delle note condivise', 'danger');
+            }
+        } catch (error) {
+            this.showAlert('Errore nel caricamento delle note condivise', 'danger');
+        } finally {
+            this.isLoading['sharedNotes'] = false;
         }
     }
 
@@ -494,7 +609,7 @@ class SharedNotesApp {
                 return this.loadAvailableTags();
             }
         } catch (error) {
-            console.error('Error loading available tags:', error);
+            // Silent error handling
         }
     }
 
@@ -503,15 +618,27 @@ class SharedNotesApp {
             // For public notes, we'll extract tags from the loaded public notes
             // since there's no specific endpoint for public tags
             if (!this.publicNotes || this.publicNotes.length === 0) {
-                console.log('No public notes available to extract tags from');
                 return;
             }
             
             const tags = [...new Set(this.publicNotes.flatMap(note => note.tags || []))];
-            console.log('Extracted public tags:', tags);
             this.populateTagFilter('publicTagFilter', tags);
         } catch (error) {
-            console.error('Error loading public tags:', error);
+            // Silent error handling
+        }
+    }
+
+    async loadSharedTags() {
+        try {
+            // For shared notes, we'll extract tags from the loaded shared notes
+            if (!this.sharedNotes || this.sharedNotes.length === 0) {
+                return;
+            }
+            
+            const tags = [...new Set(this.sharedNotes.flatMap(note => note.tags || []))];
+            this.populateTagFilter('sharedTagFilter', tags);
+        } catch (error) {
+            // Silent error handling
         }
     }
 
@@ -525,7 +652,6 @@ class SharedNotesApp {
         
         if (currentOptions.length === newTags.length && 
             currentOptions.every((tag, index) => tag === newTags[index])) {
-            console.log('Tags already loaded, skipping update');
             return;
         }
 
@@ -539,8 +665,6 @@ class SharedNotesApp {
             option.textContent = tag;
             filter.appendChild(option);
         });
-        
-        console.log(`Populated ${filterId} with ${newTags.length} tags`);
     }
 
     clearFilters() {
@@ -563,6 +687,16 @@ class SharedNotesApp {
         this.loadPublicNotes();
     }
 
+    clearSharedFilters() {
+        const searchInput = document.getElementById('sharedSearchInput');
+        const tagFilter = document.getElementById('sharedTagFilter');
+        
+        if (searchInput) searchInput.value = '';
+        if (tagFilter) tagFilter.selectedIndex = 0;
+        
+        this.loadSharedNotes();
+    }
+
     showLoadingState(containerId) {
         const container = document.getElementById(containerId);
         if (!container) return;
@@ -579,7 +713,7 @@ class SharedNotesApp {
         `;
     }
 
-    displayNotes(notes, containerId, isPublic = false) {
+    displayNotes(notes, containerId, isPublic = false, isShared = false) {
         const container = document.getElementById(containerId);
         
         if (notes.length === 0) {
@@ -621,7 +755,7 @@ class SharedNotesApp {
                             <button class="btn btn-sm btn-outline-primary" onclick="app.viewNote(${note.id}, ${isPublic})">
                                 <i class="bi bi-eye"></i> Visualizza
                             </button>
-                            ${note.owner_id === this.currentUser?.id ? `
+                            ${!isShared && note.owner_id === this.currentUser?.id ? `
                                 <button class="btn btn-sm btn-outline-secondary" onclick="app.editNote(${note.id})">
                                     <i class="bi bi-pencil"></i> Modifica
                                 </button>
@@ -885,9 +1019,68 @@ class SharedNotesApp {
         this.currentNoteId = noteId;
         document.getElementById('shareForm').reset();
         document.getElementById('sharePermission').value = CONFIG.DEFAULT_SHARE_PERMISSION;
+        document.getElementById('userSearchResults').style.display = 'none';
+        document.getElementById('userSearchResults').innerHTML = '';
         
         const modal = new bootstrap.Modal(document.getElementById('shareModal'));
         modal.show();
+    }
+
+    async searchUsers(query) {
+        if (!query || query.length < 2) {
+            document.getElementById('userSearchResults').style.display = 'none';
+            document.getElementById('userSearchResults').innerHTML = '';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/users/search?query=${encodeURIComponent(query)}`, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`
+                }
+            });
+
+            if (response.ok) {
+                const users = await response.json();
+                this.displayUserSearchResults(users);
+            } else if (response.status === 401) {
+                await this.refreshAccessToken();
+                return this.searchUsers(query);
+            }
+        } catch (error) {
+            // Silent error handling
+        }
+    }
+
+    displayUserSearchResults(users) {
+        const resultsContainer = document.getElementById('userSearchResults');
+        
+        if (users.length === 0) {
+            resultsContainer.innerHTML = '<div class="text-muted">Nessun utente trovato</div>';
+            resultsContainer.style.display = 'block';
+            return;
+        }
+
+        const resultsHtml = users.map(user => `
+            <div class="user-search-result ${!user.is_active ? 'disabled' : ''}" 
+                 onclick="${user.is_active ? `app.selectUser(${user.id}, '${this.escapeHtml(user.username)}')` : ''}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${this.escapeHtml(user.username)}</strong>
+                        ${!user.is_active ? '<span class="text-muted">(Inattivo)</span>' : ''}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        resultsContainer.innerHTML = resultsHtml;
+        resultsContainer.style.display = 'block';
+    }
+
+    selectUser(userId, username) {
+        document.getElementById('shareUserId').value = userId;
+        document.getElementById('shareUsername').value = username;
+        document.getElementById('userSearchResults').style.display = 'none';
     }
 
     async shareNote() {
@@ -1044,6 +1237,10 @@ function showMyNotes() {
 
 function showPublicNotes() {
     app.showPublicNotes();
+}
+
+function showSharedNotes() {
+    app.showSharedNotes();
 }
 
 function showCreateNote() {
