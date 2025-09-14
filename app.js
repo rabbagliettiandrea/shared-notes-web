@@ -10,6 +10,7 @@ class SharedNotesApp {
         this.searchTimeouts = {}; // For debouncing different types of search
         this.isInitialLoad = true; // Flag to prevent search during initial load
         this.isLoading = {}; // Track loading states to prevent multiple simultaneous requests
+        this.sharedUsers = []; // Store users to share the note with
         
         this.init().catch(error => {
             console.error('Error during app initialization:', error);
@@ -41,11 +42,6 @@ class SharedNotesApp {
             this.saveNote();
         });
 
-        // Share form
-        document.getElementById('shareForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.shareNote();
-        });
 
         // User search functionality
         const shareUsernameInput = document.getElementById('shareUsername');
@@ -544,12 +540,8 @@ class SharedNotesApp {
                                     <small class="text-muted">
                                         <i class="bi bi-people"></i> Condivisa con: 
                                         ${note.shared_with.map(username => `
-                                            <span class="badge bg-success me-1 d-inline-flex align-items-center">
+                                            <span class="badge bg-success me-1">
                                                 ${this.escapeHtml(username)}
-                                                <button type="button" class="btn-close btn-close-white ms-1" 
-                                                        onclick="app.unshareNote(${note.id}, '${this.escapeHtml(username)}')" 
-                                                        title="Rimuovi condivisione con ${this.escapeHtml(username)}"
-                                                        style="font-size: 0.6em;"></button>
                                             </span>
                                         `).join('')}
                                     </small>
@@ -564,9 +556,6 @@ class SharedNotesApp {
                                 <button class="btn btn-sm btn-outline-secondary" onclick="app.editNote(${note.id})">
                                     <i class="bi bi-pencil"></i> Modifica
                                 </button>
-                                <button class="btn btn-sm btn-outline-info" onclick="app.showShareModal(${note.id})">
-                                    <i class="bi bi-share"></i> Condividi
-                                </button>
                                 <button class="btn btn-sm btn-outline-danger" onclick="app.deleteNote(${note.id})">
                                     <i class="bi bi-trash"></i> Elimina
                                 </button>
@@ -580,8 +569,10 @@ class SharedNotesApp {
 
     showCreateNote() {
         this.currentNoteId = null;
+        this.sharedUsers = [];
         document.getElementById('noteModalTitle').textContent = 'Crea Nota';
         document.getElementById('noteForm').reset();
+        this.updateSharedUsersList();
         
         const modalElement = document.getElementById('noteModal');
         const modal = new bootstrap.Modal(modalElement, {
@@ -629,6 +620,33 @@ class SharedNotesApp {
                 document.getElementById('noteContent').value = note.content || '';
                 document.getElementById('noteTags').value = note.tags ? note.tags.join(', ') : '';
                 
+                // Load existing shared users
+                this.sharedUsers = [];
+                if (note.shared_with && note.shared_with.length > 0) {
+                    // Get user IDs for existing shared users
+                    for (const username of note.shared_with) {
+                        try {
+                            const userResponse = await fetch(`${this.apiBaseUrl}/users/search?query=${encodeURIComponent(username)}`, {
+                                headers: {
+                                    'Authorization': `Bearer ${this.accessToken}`
+                                }
+                            });
+                            if (userResponse.ok) {
+                                const users = await userResponse.json();
+                                const user = users.find(u => u.username === username);
+                                if (user) {
+                                    this.sharedUsers.push({ id: user.id, username: user.username });
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error loading user ID:', error);
+                            // Fallback to just username
+                            this.sharedUsers.push({ username });
+                        }
+                    }
+                }
+                this.updateSharedUsersList();
+                
                 const modalElement = document.getElementById('noteModal');
                 const modal = new bootstrap.Modal(modalElement, {
                     backdrop: true,
@@ -658,6 +676,132 @@ class SharedNotesApp {
             }
         } catch (error) {
             this.showAlert('Errore nel caricamento della nota', 'danger');
+        }
+    }
+
+    updateSharedUsersList() {
+        const sharedWithList = document.getElementById('sharedWithList');
+        if (!sharedWithList) return;
+
+        if (this.sharedUsers.length === 0) {
+            sharedWithList.innerHTML = '<div class="text-muted">Nessun utente selezionato</div>';
+            return;
+        }
+
+        sharedWithList.innerHTML = this.sharedUsers.map(user => `
+            <span class="badge bg-success me-1 d-inline-flex align-items-center">
+                ${this.escapeHtml(user.username)}
+                <button type="button" class="btn-close btn-close-white ms-1" 
+                        onclick="app.removeSharedUser('${this.escapeHtml(user.username)}')" 
+                        title="Rimuovi ${this.escapeHtml(user.username)}"
+                        style="font-size: 0.6em;"></button>
+            </span>
+        `).join('');
+    }
+
+    addSharedUser(userId, username) {
+        // Check if user is already in the list
+        if (this.sharedUsers.some(user => user.username === username)) {
+            this.showAlert('Questo utente è già stato aggiunto', 'warning');
+            return;
+        }
+
+        this.sharedUsers.push({ id: userId, username });
+        this.updateSharedUsersList();
+        
+        // Clear the search input
+        document.getElementById('shareUsername').value = '';
+        document.getElementById('shareUserId').value = '';
+        document.getElementById('userSearchResults').style.display = 'none';
+        document.getElementById('userSearchResults').innerHTML = '';
+    }
+
+    removeSharedUser(username) {
+        this.sharedUsers = this.sharedUsers.filter(user => user.username !== username);
+        this.updateSharedUsersList();
+    }
+
+    async updateNoteSharing(noteId) {
+        if (!this.accessToken) return;
+
+        try {
+            // First, get current shared users to compare
+            const currentResponse = await fetch(`${this.apiBaseUrl}/notes/${noteId}?_t=${Date.now()}`, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (!currentResponse.ok) return;
+
+            const currentNote = await currentResponse.json();
+            const currentSharedUsers = currentNote.shared_with || [];
+
+            // Get user IDs for new shared users
+            const newSharedUserIds = [];
+            for (const user of this.sharedUsers) {
+                if (!user.id) {
+                    // Need to get user ID from username
+                    const userResponse = await fetch(`${this.apiBaseUrl}/users/search?query=${encodeURIComponent(user.username)}`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`
+                        }
+                    });
+                    if (userResponse.ok) {
+                        const users = await userResponse.json();
+                        const foundUser = users.find(u => u.username === user.username);
+                        if (foundUser) {
+                            newSharedUserIds.push(foundUser.id);
+                        }
+                    }
+                } else {
+                    newSharedUserIds.push(user.id);
+                }
+            }
+
+            // Remove users that are no longer in the shared list
+            for (const username of currentSharedUsers) {
+                if (!this.sharedUsers.some(user => user.username === username)) {
+                    // Get user ID and remove sharing
+                    const userResponse = await fetch(`${this.apiBaseUrl}/users/search?query=${encodeURIComponent(username)}`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`
+                        }
+                    });
+                    if (userResponse.ok) {
+                        const users = await userResponse.json();
+                        const user = users.find(u => u.username === username);
+                        if (user) {
+                            await fetch(`${this.apiBaseUrl}/notes/${noteId}/share/${user.id}?_t=${Date.now()}`, {
+                                method: 'DELETE',
+                                headers: {
+                                    'Authorization': `Bearer ${this.accessToken}`,
+                                    'Cache-Control': 'no-cache',
+                                    'Pragma': 'no-cache'
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Add new shared users
+            for (const userId of newSharedUserIds) {
+                if (!currentSharedUsers.includes(this.sharedUsers.find(u => u.id === userId)?.username)) {
+                    await fetch(`${this.apiBaseUrl}/notes/${noteId}/share?user_id=${userId}&_t=${Date.now()}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache'
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error updating note sharing:', error);
         }
     }
 
@@ -697,6 +841,13 @@ class SharedNotesApp {
             });
 
             if (response.ok) {
+                const savedNote = await response.json();
+                
+                // Handle sharing for the saved note
+                if (this.sharedUsers.length > 0) {
+                    await this.updateNoteSharing(savedNote.id);
+                }
+                
                 this.showAlert(
                     this.currentNoteId ? 'Nota aggiornata con successo!' : 'Nota creata con successo!', 
                     'success'
@@ -809,12 +960,8 @@ class SharedNotesApp {
                                     ${note.owner_id === this.currentUser?.id && note.shared_with && note.shared_with.length > 0 ? `
                                         <br><i class="bi bi-share"></i> Condivisa con: 
                                         ${note.shared_with.map(username => `
-                                            <span class="badge bg-success me-1 d-inline-flex align-items-center">
+                                            <span class="badge bg-success me-1">
                                                 ${this.escapeHtml(username)}
-                                                <button type="button" class="btn-close btn-close-white ms-1" 
-                                                        onclick="app.unshareNote(${note.id}, '${this.escapeHtml(username)}')" 
-                                                        title="Rimuovi condivisione con ${this.escapeHtml(username)}"
-                                                        style="font-size: 0.6em;"></button>
                                             </span>
                                         `).join('')}
                                     ` : ''}
@@ -885,36 +1032,6 @@ class SharedNotesApp {
         });
     }
 
-    showShareModal(noteId) {
-        this.currentNoteId = noteId;
-        document.getElementById('shareForm').reset();
-        document.getElementById('userSearchResults').style.display = 'none';
-        document.getElementById('userSearchResults').innerHTML = '';
-        
-        const modalElement = document.getElementById('shareModal');
-        const modal = new bootstrap.Modal(modalElement, {
-            backdrop: true,
-            keyboard: true,
-            focus: true
-        });
-        
-        // Use inert instead of aria-hidden for better accessibility
-        modalElement.addEventListener('show.bs.modal', function() {
-            this.removeAttribute('inert');
-            this.removeAttribute('aria-hidden');
-        });
-        
-        modalElement.addEventListener('shown.bs.modal', function() {
-            this.removeAttribute('inert');
-            this.removeAttribute('aria-hidden');
-        });
-        
-        modalElement.addEventListener('hide.bs.modal', function() {
-            this.setAttribute('inert', '');
-        });
-        
-        modal.show();
-    }
 
     async searchUsers(query) {
         if (!query || query.length < 2) {
@@ -968,53 +1085,9 @@ class SharedNotesApp {
     }
 
     selectUser(userId, username) {
-        document.getElementById('shareUserId').value = userId;
-        document.getElementById('shareUsername').value = username;
-        document.getElementById('userSearchResults').style.display = 'none';
+        this.addSharedUser(userId, username);
     }
 
-    async shareNote() {
-        if (!this.accessToken) return;
-
-        const userId = document.getElementById('shareUserId').value;
-
-        if (!userId) {
-            this.showAlert('Seleziona un utente da condividere', 'warning');
-            return;
-        }
-
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/${this.currentNoteId}/share?user_id=${userId}&_t=${Date.now()}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
-                }
-            });
-
-            if (response.ok) {
-                this.showAlert('Nota condivisa con successo!', 'success');
-                const modal = bootstrap.Modal.getInstance(document.getElementById('shareModal'));
-                modal.hide();
-                // Clear the form
-                document.getElementById('shareUsername').value = '';
-                document.getElementById('shareUserId').value = '';
-                document.getElementById('userSearchResults').style.display = 'none';
-                document.getElementById('userSearchResults').innerHTML = '';
-                // Reload notes to show updated sharing information
-                await this.loadNotes();
-            } else if (response.status === 401) {
-                await this.refreshAccessToken();
-                return this.shareNote();
-            } else {
-                const error = await response.json();
-                this.showAlert(error.detail || 'Errore nella condivisione della nota', 'danger');
-            }
-        } catch (error) {
-            this.showAlert('Errore di rete. Riprova.', 'danger');
-        }
-    }
 
     async unshareNote(noteId, username) {
         if (!this.accessToken) return;
@@ -1218,9 +1291,6 @@ function saveNote() {
     app.saveNote();
 }
 
-function shareNote() {
-    app.shareNote();
-}
 
 function clearFilters() {
     app.clearFilters();

@@ -196,6 +196,26 @@
                                 <input type="text" class="form-control" id="noteTags" placeholder="Inserisci i tag separati da virgola (es: lavoro, importante, progetto)">
                                 <div class="form-text">I tag ti aiutano a organizzare e trovare le tue note</div>
                             </div>
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-share"></i> Condivisione
+                                </label>
+                                <div class="mb-2">
+                                    <input type="text" class="form-control" id="shareUsername" 
+                                           placeholder="Inizia a digitare per cercare utenti..." autocomplete="off">
+                                    <div id="userSearchResults" class="mt-2" style="display: none;">
+                                        <!-- User search results will be populated here -->
+                                    </div>
+                                    <input type="hidden" id="shareUserId">
+                                </div>
+                                <div id="sharedWithList" class="mb-2">
+                                    <!-- Shared users will be displayed here -->
+                                </div>
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i>
+                                    <strong>Nota:</strong> Gli utenti selezionati avranno accesso in sola lettura alla nota
+                                </div>
+                            </div>
                         </form>
                     </div>
                     <div class="modal-footer">
@@ -206,40 +226,6 @@
             </div>
         </div>
 
-        <!-- Share Note Modal -->
-        <div class="modal fade" id="shareModal" tabindex="-1" inert>
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Condividi Nota</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="shareForm">
-                            <div class="mb-3">
-                                <label for="shareUsername" class="form-label">Nome Utente</label>
-                                <input type="text" class="form-control" id="shareUsername" 
-                                       placeholder="Inizia a digitare per cercare utenti..." autocomplete="off">
-                                <div id="userSearchResults" class="mt-2" style="display: none;">
-                                    <!-- User search results will be populated here -->
-                                </div>
-                                <input type="hidden" id="shareUserId" required>
-                            </div>
-                            <div class="mb-3">
-                                <div class="alert alert-info">
-                                    <i class="bi bi-info-circle"></i>
-                                    <strong>Nota:</strong> L'utente avrà accesso in sola lettura alla nota
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
-                        <button type="button" class="btn btn-primary" onclick="shareNote()">Condividi</button>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- User Profile Modal -->
         <div class="modal fade" id="profileModal" tabindex="-1" inert>
