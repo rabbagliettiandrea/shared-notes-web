@@ -6,8 +6,6 @@ class SharedNotesApp {
         this.accessToken = localStorage.getItem(CONFIG.TOKEN_STORAGE_KEY);
         this.refreshToken = localStorage.getItem(CONFIG.REFRESH_TOKEN_STORAGE_KEY);
         this.currentNoteId = null;
-        this.publicNotes = []; // Store loaded public notes
-        this.sharedNotes = []; // Store loaded shared notes
         this.availableTags = []; // Store available tags
         this.searchTimeouts = {}; // For debouncing different types of search
         this.isInitialLoad = true; // Flag to prevent search during initial load
@@ -21,7 +19,7 @@ class SharedNotesApp {
     async init() {
         this.setupEventListeners();
         await this.checkAuthStatus();
-        this.showHome();
+        this.showMyNotes();
     }
 
     setupEventListeners() {
@@ -78,37 +76,7 @@ class SharedNotesApp {
             });
         }
 
-        // Search input for public notes
-        const publicSearchInput = document.getElementById('publicSearchInput');
-        if (publicSearchInput) {
-            publicSearchInput.addEventListener('input', (e) => {
-                this.debounceSearch('publicNotes', () => this.loadPublicNotes(), 500);
-            });
-        }
 
-        // Tag filter for public notes
-        const publicTagFilter = document.getElementById('publicTagFilter');
-        if (publicTagFilter) {
-            publicTagFilter.addEventListener('change', () => {
-                this.debounceSearch('publicNotes', () => this.loadPublicNotes(), 100);
-            });
-        }
-
-        // Search input for shared notes
-        const sharedSearchInput = document.getElementById('sharedSearchInput');
-        if (sharedSearchInput) {
-            sharedSearchInput.addEventListener('input', (e) => {
-                this.debounceSearch('sharedNotes', () => this.loadSharedNotes(), 500);
-            });
-        }
-
-        // Tag filter for shared notes
-        const sharedTagFilter = document.getElementById('sharedTagFilter');
-        if (sharedTagFilter) {
-            sharedTagFilter.addEventListener('change', () => {
-                this.debounceSearch('sharedNotes', () => this.loadSharedNotes(), 100);
-            });
-        }
     }
 
     debounceSearch(searchType, searchFunction, delay) {
@@ -225,7 +193,7 @@ class SharedNotesApp {
             localStorage.removeItem(CONFIG.TOKEN_STORAGE_KEY);
             localStorage.removeItem(CONFIG.REFRESH_TOKEN_STORAGE_KEY);
             this.updateAuthUI();
-            this.showHome();
+            this.showMyNotes();
             this.showAlert('Disconnesso con successo', 'info');
         }
     }
@@ -341,10 +309,6 @@ class SharedNotesApp {
                     </a>
                 </li>
             `;
-            
-            // Show login/register buttons for non-authenticated users
-            document.getElementById('authButtons').classList.remove('d-none');
-            document.getElementById('authButtons').classList.add('d-flex');
         }
     }
 
@@ -360,9 +324,6 @@ class SharedNotesApp {
         document.getElementById(pageId).style.display = 'block';
     }
 
-    showHome() {
-        this.showPage('homePage');
-    }
 
     showLogin() {
         this.showPage('loginPage');
@@ -375,39 +336,27 @@ class SharedNotesApp {
     }
 
     async showMyNotes() {
-        if (!this.currentUser) {
-            this.showLogin();
-            return;
-        }
-        
         this.showPage('myNotesPage');
-        this.isInitialLoad = true;
-        await Promise.all([
-            this.loadNotes(),
-            this.loadAvailableTags()
-        ]);
-        this.isInitialLoad = false;
-    }
-
-    async showPublicNotes() {
-        this.showPage('publicNotesPage');
-        this.isInitialLoad = true;
-        // Load public notes (tags will be loaded automatically after notes are loaded)
-        await this.loadPublicNotes();
-        this.isInitialLoad = false;
-    }
-
-    async showSharedNotes() {
-        if (!this.currentUser) {
-            this.showLogin();
-            return;
-        }
         
-        this.showPage('sharedNotesPage');
-        this.isInitialLoad = true;
-        await this.loadSharedNotes();
-        this.isInitialLoad = false;
+        if (!this.currentUser) {
+            // Show anonymous content
+            document.getElementById('anonymousContent').style.display = 'block';
+            document.getElementById('authenticatedContent').style.display = 'none';
+        } else {
+            // Show authenticated content
+            document.getElementById('anonymousContent').style.display = 'none';
+            document.getElementById('authenticatedContent').style.display = 'block';
+            
+            this.isInitialLoad = true;
+            await Promise.all([
+                this.loadNotes(),
+                this.loadAvailableTags()
+            ]);
+            this.isInitialLoad = false;
+        }
     }
+
+
 
     // Notes Methods
     async loadNotes() {
@@ -454,7 +403,7 @@ class SharedNotesApp {
 
             if (response.ok) {
                 const notes = await response.json();
-                this.displayNotes(notes, 'notesList', false);
+                this.displayNotes(notes, 'notesList');
             } else if (response.status === 401) {
                 await this.refreshAccessToken();
                 return this.loadNotes();
@@ -466,133 +415,14 @@ class SharedNotesApp {
         }
     }
 
-    async loadPublicNotes() {
-        // Prevent multiple simultaneous requests
-        if (this.isLoading['publicNotes']) {
-            return;
-        }
 
-        this.isLoading['publicNotes'] = true;
-
-        try {
-            // Show loading state only if not initial load
-            if (!this.isInitialLoad) {
-                this.showLoadingState('publicNotesList');
-            }
-
-            // Get search and filter parameters
-            const searchInput = document.getElementById('publicSearchInput');
-            const tagFilter = document.getElementById('publicTagFilter');
-            
-            const search = searchInput ? searchInput.value.trim() : '';
-            const selectedTags = tagFilter ? Array.from(tagFilter.selectedOptions)
-                .map(option => option.value)
-                .filter(value => value !== '') : [];
-
-            // Build query parameters
-            const params = new URLSearchParams();
-            if (search) params.append('search', search);
-            if (selectedTags.length > 0) params.append('tags', selectedTags.join(','));
-            // Add cache-busting parameter
-            params.append('_t', Date.now());
-
-            const url = `${this.apiBaseUrl}/notes/public${params.toString() ? '?' + params.toString() : ''}`;
-            
-            const response = await fetch(url, {
-                headers: {
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
-                }
-            });
-            
-            if (response.ok) {
-                const notes = await response.json();
-                this.publicNotes = notes; // Store public notes for later use
-                this.displayNotes(notes, 'publicNotesList', true);
-                // Load tags after notes are loaded
-                this.loadPublicTags();
-            } else {
-                this.showAlert('Errore nel caricamento delle note pubbliche', 'danger');
-            }
-        } catch (error) {
-            this.showAlert('Errore nel caricamento delle note pubbliche', 'danger');
-        } finally {
-            this.isLoading['publicNotes'] = false;
-        }
-    }
-
-    async loadSharedNotes() {
-        if (!this.accessToken) return;
-
-        // Prevent multiple simultaneous requests
-        if (this.isLoading['sharedNotes']) {
-            return;
-        }
-
-        this.isLoading['sharedNotes'] = true;
-
-        try {
-            // Show loading state only if not initial load
-            if (!this.isInitialLoad) {
-                this.showLoadingState('sharedNotesList');
-            }
-
-            // Get search and filter parameters
-            const searchInput = document.getElementById('sharedSearchInput');
-            const tagFilter = document.getElementById('sharedTagFilter');
-            
-            const search = searchInput ? searchInput.value.trim() : '';
-            const selectedTags = tagFilter ? Array.from(tagFilter.selectedOptions)
-                .map(option => option.value)
-                .filter(value => value !== '') : [];
-
-            // Build query parameters
-            const params = new URLSearchParams();
-            if (search) params.append('search', search);
-            if (selectedTags.length > 0) params.append('tags', selectedTags.join(','));
-            // Add pagination parameters
-            params.append('skip', '0');
-            params.append('limit', '100');
-            // Note: Don't add _t parameter for shared notes as it causes 422 error
-
-            const url = `${this.apiBaseUrl}/notes/shared?${params.toString()}`;
-            
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                    'X-Cache-Bust': Date.now().toString()
-                }
-            });
-
-            if (response.ok) {
-                const notes = await response.json();
-                this.sharedNotes = notes; // Store shared notes for later use
-                this.displayNotes(notes, 'sharedNotesList', false, true);
-                // Load tags after notes are loaded
-                this.loadSharedTags();
-            } else if (response.status === 401) {
-                await this.refreshAccessToken();
-                return this.loadSharedNotes();
-            } else {
-                console.error('Response not OK:', response.status, response.statusText);
-                const errorText = await response.text();
-                console.error('Error response:', errorText);
-                this.showAlert('Errore nel caricamento delle note condivise', 'danger');
-            }
-        } catch (error) {
-            this.showAlert('Errore nel caricamento delle note condivise', 'danger');
-        } finally {
-            this.isLoading['sharedNotes'] = false;
-        }
-    }
 
     async loadAvailableTags() {
         if (!this.accessToken) return;
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/tags?_t=${Date.now()}`, {
+            // Load tags from all accessible notes (owned + shared)
+            const response = await fetch(`${this.apiBaseUrl}/notes?_t=${Date.now()}`, {
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
                     'Cache-Control': 'no-cache',
@@ -601,9 +431,11 @@ class SharedNotesApp {
             });
 
             if (response.ok) {
-                const tags = await response.json();
-                this.availableTags = tags;
-                this.populateTagFilter('tagFilter', tags);
+                const notes = await response.json();
+                // Extract unique tags from all notes
+                const allTags = [...new Set(notes.flatMap(note => note.tags || []))];
+                this.availableTags = allTags.sort();
+                this.populateTagFilter('tagFilter', this.availableTags);
             } else if (response.status === 401) {
                 await this.refreshAccessToken();
                 return this.loadAvailableTags();
@@ -613,34 +445,7 @@ class SharedNotesApp {
         }
     }
 
-    async loadPublicTags() {
-        try {
-            // For public notes, we'll extract tags from the loaded public notes
-            // since there's no specific endpoint for public tags
-            if (!this.publicNotes || this.publicNotes.length === 0) {
-                return;
-            }
-            
-            const tags = [...new Set(this.publicNotes.flatMap(note => note.tags || []))];
-            this.populateTagFilter('publicTagFilter', tags);
-        } catch (error) {
-            // Silent error handling
-        }
-    }
 
-    async loadSharedTags() {
-        try {
-            // For shared notes, we'll extract tags from the loaded shared notes
-            if (!this.sharedNotes || this.sharedNotes.length === 0) {
-                return;
-            }
-            
-            const tags = [...new Set(this.sharedNotes.flatMap(note => note.tags || []))];
-            this.populateTagFilter('sharedTagFilter', tags);
-        } catch (error) {
-            // Silent error handling
-        }
-    }
 
     populateTagFilter(filterId, tags) {
         const filter = document.getElementById(filterId);
@@ -677,25 +482,7 @@ class SharedNotesApp {
         this.loadNotes();
     }
 
-    clearPublicFilters() {
-        const searchInput = document.getElementById('publicSearchInput');
-        const tagFilter = document.getElementById('publicTagFilter');
-        
-        if (searchInput) searchInput.value = '';
-        if (tagFilter) tagFilter.selectedIndex = 0;
-        
-        this.loadPublicNotes();
-    }
 
-    clearSharedFilters() {
-        const searchInput = document.getElementById('sharedSearchInput');
-        const tagFilter = document.getElementById('sharedTagFilter');
-        
-        if (searchInput) searchInput.value = '';
-        if (tagFilter) tagFilter.selectedIndex = 0;
-        
-        this.loadSharedNotes();
-    }
 
     showLoadingState(containerId) {
         const container = document.getElementById(containerId);
@@ -713,7 +500,7 @@ class SharedNotesApp {
         `;
     }
 
-    displayNotes(notes, containerId, isPublic = false, isShared = false) {
+    displayNotes(notes, containerId, isShared = false) {
         const container = document.getElementById(containerId);
         
         if (notes.length === 0) {
@@ -734,7 +521,6 @@ class SharedNotesApp {
                 <div class="card note-card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h6 class="mb-0 text-truncate">${this.escapeHtml(note.title)}</h6>
-                        ${note.is_public ? '<span class="public-badge">Pubblica</span>' : ''}
                     </div>
                     <div class="card-body">
                         <div class="note-content">
@@ -748,14 +534,25 @@ class SharedNotesApp {
                         <div class="note-meta">
                             <small>
                                 <i class="bi bi-calendar"></i> ${new Date(note.created_at).toLocaleDateString()}
-                                ${note.owner_id === this.currentUser?.id ? '<span class="badge bg-primary ms-2">Proprietario</span>' : ''}
+                                ${note.owner_id === this.currentUser?.id ? 
+                                    '<span class="badge bg-primary ms-2">Le mie note</span>' : 
+                                    `<span class="badge bg-success ms-2">Condivisa da ${this.escapeHtml(note.owner_username || 'Sconosciuto')}</span>`
+                                }
                             </small>
+                            ${note.owner_id === this.currentUser?.id && note.shared_with && note.shared_with.length > 0 ? `
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="bi bi-people"></i> Condivisa con: 
+                                        ${note.shared_with.map(username => `<span class="badge bg-success me-1">${this.escapeHtml(username)}</span>`).join('')}
+                                    </small>
+                                </div>
+                            ` : ''}
                         </div>
                         <div class="note-actions">
-                            <button class="btn btn-sm btn-outline-primary" onclick="app.viewNote(${note.id}, ${isPublic})">
+                            <button class="btn btn-sm btn-outline-primary" onclick="app.viewNote(${note.id})">
                                 <i class="bi bi-eye"></i> Visualizza
                             </button>
-                            ${!isShared && note.owner_id === this.currentUser?.id ? `
+                            ${note.owner_id === this.currentUser?.id ? `
                                 <button class="btn btn-sm btn-outline-secondary" onclick="app.editNote(${note.id})">
                                     <i class="bi bi-pencil"></i> Modifica
                                 </button>
@@ -777,9 +574,29 @@ class SharedNotesApp {
         this.currentNoteId = null;
         document.getElementById('noteModalTitle').textContent = 'Crea Nota';
         document.getElementById('noteForm').reset();
-        document.getElementById('noteIsPublic').checked = CONFIG.DEFAULT_NOTE_VISIBILITY;
         
-        const modal = new bootstrap.Modal(document.getElementById('noteModal'));
+        const modalElement = document.getElementById('noteModal');
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+        
+        // Use inert instead of aria-hidden for better accessibility
+        modalElement.addEventListener('show.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('shown.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('hide.bs.modal', function() {
+            this.setAttribute('inert', '');
+        });
+        
         modal.show();
     }
 
@@ -802,10 +619,30 @@ class SharedNotesApp {
                 document.getElementById('noteModalTitle').textContent = 'Modifica Nota';
                 document.getElementById('noteTitle').value = note.title;
                 document.getElementById('noteContent').value = note.content || '';
-                document.getElementById('noteIsPublic').checked = note.is_public;
                 document.getElementById('noteTags').value = note.tags ? note.tags.join(', ') : '';
                 
-                const modal = new bootstrap.Modal(document.getElementById('noteModal'));
+                const modalElement = document.getElementById('noteModal');
+                const modal = new bootstrap.Modal(modalElement, {
+                    backdrop: true,
+                    keyboard: true,
+                    focus: true
+                });
+                
+                // Use inert instead of aria-hidden for better accessibility
+                modalElement.addEventListener('show.bs.modal', function() {
+                    this.removeAttribute('inert');
+                    this.removeAttribute('aria-hidden');
+                });
+                
+                modalElement.addEventListener('shown.bs.modal', function() {
+                    this.removeAttribute('inert');
+                    this.removeAttribute('aria-hidden');
+                });
+                
+                modalElement.addEventListener('hide.bs.modal', function() {
+                    this.setAttribute('inert', '');
+                });
+                
                 modal.show();
             } else if (response.status === 401) {
                 await this.refreshAccessToken();
@@ -821,7 +658,7 @@ class SharedNotesApp {
 
         const title = document.getElementById('noteTitle').value;
         const content = document.getElementById('noteContent').value;
-        const isPublic = document.getElementById('noteIsPublic').checked;
+        const isPublic = false; // Public notes functionality removed
         const tagsInput = document.getElementById('noteTags').value;
         
         // Parse tags from comma-separated string
@@ -832,7 +669,6 @@ class SharedNotesApp {
         const noteData = {
             title: title,
             content: content,
-            is_public: isPublic,
             tags: tags
         };
 
@@ -908,25 +744,13 @@ class SharedNotesApp {
         }
     }
 
-    async viewNote(noteId, isPublic = false) {
-        // For public notes, we don't need authentication
+    async viewNote(noteId) {
         // For private notes, we need authentication
-        if (!isPublic && !this.accessToken) {
+        if (!this.accessToken) {
             this.showAlert('Devi effettuare l\'accesso per visualizzare questa nota', 'warning');
             return;
         }
 
-        // For public notes, use cached data instead of API call
-        if (isPublic) {
-            const note = this.publicNotes.find(n => n.id === parseInt(noteId));
-            if (note) {
-                this.showNoteModal(note);
-                return;
-            } else {
-                this.showAlert('Nota non trovata', 'danger');
-                return;
-            }
-        }
 
         try {
             const headers = {};
@@ -947,7 +771,7 @@ class SharedNotesApp {
                 this.showNoteModal(note);
             } else if (response.status === 401) {
                 await this.refreshAccessToken();
-                return this.viewNote(noteId, isPublic);
+                return this.viewNote(noteId);
             }
         } catch (error) {
             this.showAlert('Errore nel caricamento della nota', 'danger');
@@ -957,7 +781,7 @@ class SharedNotesApp {
     showNoteModal(note) {
         // Create a modal to display the note
         const modalHtml = `
-            <div class="modal fade" id="viewNoteModal" tabindex="-1">
+            <div class="modal fade" id="viewNoteModal" tabindex="-1" inert>
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
@@ -969,6 +793,15 @@ class SharedNotesApp {
                                 <small class="text-muted">
                                     <i class="bi bi-calendar"></i> Creato: ${new Date(note.created_at).toLocaleString()}
                                     ${note.updated_at ? `<br><i class="bi bi-pencil"></i> Aggiornato: ${new Date(note.updated_at).toLocaleString()}` : ''}
+                                    <br>
+                                    ${note.owner_id === this.currentUser?.id ? 
+                                        '<i class="bi bi-person-check"></i> <span class="badge bg-primary">Le mie note</span>' : 
+                                        `<i class="bi bi-people"></i> <span class="badge bg-success">Condivisa da ${this.escapeHtml(note.owner_username || 'Sconosciuto')}</span>`
+                                    }
+                                    ${note.owner_id === this.currentUser?.id && note.shared_with && note.shared_with.length > 0 ? `
+                                        <br><i class="bi bi-share"></i> Condivisa con: 
+                                        ${note.shared_with.map(username => `<span class="badge bg-success me-1">${this.escapeHtml(username)}</span>`).join('')}
+                                    ` : ''}
                                 </small>
                             </div>
                             ${note.tags && note.tags.length > 0 ? `
@@ -1006,7 +839,28 @@ class SharedNotesApp {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         
         // Show modal
-        const modal = new bootstrap.Modal(document.getElementById('viewNoteModal'));
+        const modalElement = document.getElementById('viewNoteModal');
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+        
+        // Use inert instead of aria-hidden for better accessibility
+        modalElement.addEventListener('show.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('shown.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('hide.bs.modal', function() {
+            this.setAttribute('inert', '');
+        });
+        
         modal.show();
         
         // Clean up modal when hidden
@@ -1018,11 +872,31 @@ class SharedNotesApp {
     showShareModal(noteId) {
         this.currentNoteId = noteId;
         document.getElementById('shareForm').reset();
-        document.getElementById('sharePermission').value = CONFIG.DEFAULT_SHARE_PERMISSION;
         document.getElementById('userSearchResults').style.display = 'none';
         document.getElementById('userSearchResults').innerHTML = '';
         
-        const modal = new bootstrap.Modal(document.getElementById('shareModal'));
+        const modalElement = document.getElementById('shareModal');
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+        
+        // Use inert instead of aria-hidden for better accessibility
+        modalElement.addEventListener('show.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('shown.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('hide.bs.modal', function() {
+            this.setAttribute('inert', '');
+        });
+        
         modal.show();
     }
 
@@ -1087,10 +961,14 @@ class SharedNotesApp {
         if (!this.accessToken) return;
 
         const userId = document.getElementById('shareUserId').value;
-        const permission = document.getElementById('sharePermission').value;
+
+        if (!userId) {
+            this.showAlert('Seleziona un utente da condividere', 'warning');
+            return;
+        }
 
         try {
-            const response = await fetch(`${this.apiBaseUrl}/notes/${this.currentNoteId}/share?user_id=${userId}&permission=${permission}&_t=${Date.now()}`, {
+            const response = await fetch(`${this.apiBaseUrl}/notes/${this.currentNoteId}/share?user_id=${userId}&_t=${Date.now()}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
@@ -1103,6 +981,13 @@ class SharedNotesApp {
                 this.showAlert('Nota condivisa con successo!', 'success');
                 const modal = bootstrap.Modal.getInstance(document.getElementById('shareModal'));
                 modal.hide();
+                // Clear the form
+                document.getElementById('shareUsername').value = '';
+                document.getElementById('shareUserId').value = '';
+                document.getElementById('userSearchResults').style.display = 'none';
+                document.getElementById('userSearchResults').innerHTML = '';
+                // Reload notes to show updated sharing information
+                await this.loadNotes();
             } else if (response.status === 401) {
                 await this.refreshAccessToken();
                 return this.shareNote();
@@ -1151,7 +1036,28 @@ class SharedNotesApp {
 
         document.getElementById('userProfileInfo').innerHTML = profileHtml;
         
-        const modal = new bootstrap.Modal(document.getElementById('profileModal'));
+        const modalElement = document.getElementById('profileModal');
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+        
+        // Use inert instead of aria-hidden for better accessibility
+        modalElement.addEventListener('show.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('shown.bs.modal', function() {
+            this.removeAttribute('inert');
+            this.removeAttribute('aria-hidden');
+        });
+        
+        modalElement.addEventListener('hide.bs.modal', function() {
+            this.setAttribute('inert', '');
+        });
+        
         modal.show();
     }
 
@@ -1219,10 +1125,6 @@ class SharedNotesApp {
 }
 
 // Global functions for onclick handlers
-function showHome() {
-    app.showHome();
-}
-
 function showLogin() {
     app.showLogin();
 }
@@ -1235,13 +1137,7 @@ function showMyNotes() {
     app.showMyNotes();
 }
 
-function showPublicNotes() {
-    app.showPublicNotes();
-}
 
-function showSharedNotes() {
-    app.showSharedNotes();
-}
 
 function showCreateNote() {
     app.showCreateNote();
@@ -1259,9 +1155,6 @@ function clearFilters() {
     app.clearFilters();
 }
 
-function clearPublicFilters() {
-    app.clearPublicFilters();
-}
 
 // Initialize the application
 const app = new SharedNotesApp();

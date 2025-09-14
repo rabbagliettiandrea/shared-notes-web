@@ -11,16 +11,12 @@ const CONFIG = {
     APP_VERSION: '1.0.0',
     
     // UI Settings
-    AUTO_HIDE_ALERTS_AFTER: 5000, // milliseconds
+    AUTO_HIDE_ALERTS_AFTER: 2000, // milliseconds
     NOTES_PER_PAGE: 100,
     
     // Token Settings
     TOKEN_STORAGE_KEY: 'accessToken',
-    REFRESH_TOKEN_STORAGE_KEY: 'refreshToken',
-    
-    // Default Values
-    DEFAULT_SHARE_PERMISSION: 'read',
-    DEFAULT_NOTE_VISIBILITY: false
+    REFRESH_TOKEN_STORAGE_KEY: 'refreshToken'
 };
 
 // Make config available globally

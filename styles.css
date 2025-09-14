@@ -86,14 +86,6 @@ body {
     margin-bottom: 0.5rem;
 }
 
-/* Public note indicator */
-.public-badge {
-    background-color: var(--success-color);
-    color: white;
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.375rem;
-}
 
 /* Buttons */
 .btn {
@@ -252,27 +244,6 @@ body {
     color: var(--secondary-color);
 }
 
-/* Permission badges */
-.permission-badge {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.375rem;
-}
-
-.permission-read {
-    background-color: var(--info-color);
-    color: white;
-}
-
-.permission-write {
-    background-color: var(--warning-color);
-    color: var(--dark-color);
-}
-
-.permission-admin {
-    background-color: var(--danger-color);
-    color: white;
-}
 
 /* Note links styling */
 .note-link {
