@@ -543,7 +543,15 @@ class SharedNotesApp {
                                 <div class="mt-2">
                                     <small class="text-muted">
                                         <i class="bi bi-people"></i> Condivisa con: 
-                                        ${note.shared_with.map(username => `<span class="badge bg-success me-1">${this.escapeHtml(username)}</span>`).join('')}
+                                        ${note.shared_with.map(username => `
+                                            <span class="badge bg-success me-1 d-inline-flex align-items-center">
+                                                ${this.escapeHtml(username)}
+                                                <button type="button" class="btn-close btn-close-white ms-1" 
+                                                        onclick="app.unshareNote(${note.id}, '${this.escapeHtml(username)}')" 
+                                                        title="Rimuovi condivisione con ${this.escapeHtml(username)}"
+                                                        style="font-size: 0.6em;"></button>
+                                            </span>
+                                        `).join('')}
                                     </small>
                                 </div>
                             ` : ''}
@@ -800,7 +808,15 @@ class SharedNotesApp {
                                     }
                                     ${note.owner_id === this.currentUser?.id && note.shared_with && note.shared_with.length > 0 ? `
                                         <br><i class="bi bi-share"></i> Condivisa con: 
-                                        ${note.shared_with.map(username => `<span class="badge bg-success me-1">${this.escapeHtml(username)}</span>`).join('')}
+                                        ${note.shared_with.map(username => `
+                                            <span class="badge bg-success me-1 d-inline-flex align-items-center">
+                                                ${this.escapeHtml(username)}
+                                                <button type="button" class="btn-close btn-close-white ms-1" 
+                                                        onclick="app.unshareNote(${note.id}, '${this.escapeHtml(username)}')" 
+                                                        title="Rimuovi condivisione con ${this.escapeHtml(username)}"
+                                                        style="font-size: 0.6em;"></button>
+                                            </span>
+                                        `).join('')}
                                     ` : ''}
                                 </small>
                             </div>
@@ -994,6 +1010,61 @@ class SharedNotesApp {
             } else {
                 const error = await response.json();
                 this.showAlert(error.detail || 'Errore nella condivisione della nota', 'danger');
+            }
+        } catch (error) {
+            this.showAlert('Errore di rete. Riprova.', 'danger');
+        }
+    }
+
+    async unshareNote(noteId, username) {
+        if (!this.accessToken) return;
+
+        // Confirm the action
+        if (!confirm(`Sei sicuro di voler rimuovere la condivisione con ${username}?`)) {
+            return;
+        }
+
+        try {
+            // First, we need to get the user ID from the username
+            const userResponse = await fetch(`${this.apiBaseUrl}/users/search?query=${encodeURIComponent(username)}`, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`
+                }
+            });
+
+            if (!userResponse.ok) {
+                this.showAlert('Errore nel recupero delle informazioni utente', 'danger');
+                return;
+            }
+
+            const users = await userResponse.json();
+            const user = users.find(u => u.username === username);
+
+            if (!user) {
+                this.showAlert('Utente non trovato', 'danger');
+                return;
+            }
+
+            // Now unshare the note
+            const response = await fetch(`${this.apiBaseUrl}/notes/${noteId}/share/${user.id}?_t=${Date.now()}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (response.ok) {
+                this.showAlert(`Condivisione rimossa con successo da ${username}!`, 'success');
+                // Reload notes to show updated sharing information
+                await this.loadNotes();
+            } else if (response.status === 401) {
+                await this.refreshAccessToken();
+                return this.unshareNote(noteId, username);
+            } else {
+                const error = await response.json();
+                this.showAlert(error.detail || 'Errore nella rimozione della condivisione', 'danger');
             }
         } catch (error) {
             this.showAlert('Errore di rete. Riprova.', 'danger');
