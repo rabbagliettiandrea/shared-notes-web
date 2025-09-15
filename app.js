@@ -844,9 +844,7 @@ class SharedNotesApp {
                 const savedNote = await response.json();
                 
                 // Handle sharing for the saved note
-                if (this.sharedUsers.length > 0) {
-                    await this.updateNoteSharing(savedNote.id);
-                }
+                await this.updateNoteSharing(savedNote.id);
                 
                 this.showAlert(
                     this.currentNoteId ? 'Nota aggiornata con successo!' : 'Nota creata con successo!', 
